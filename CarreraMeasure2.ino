@@ -1,29 +1,55 @@
+/*
+CarreraMeasure2 - An arduino sketch to measure times of slotcars
+ Copyright (C) 2012  Harm Reck
+ 
+ This program is free software; you can redistribute it and/or
+ modify it under the terms of the GNU General Public License
+ as published by the Free Software Foundation; either version 2
+ of the License, or (at your option) any later version.
+ 
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+ 
+ You should have received a copy of the GNU General Public License
+ along with this program; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ */
+
+
+
+
+
+
 #include <LiquidCrystal.h>
 #include <Wire.h>
 
-#define expander B0100000
+#define expander        B0100000  // I²C address of the expander, might be different depending on wiring
 
 // pins for our buttons
-#define resetPin  0
-#define modePin  1
-#define plusPin  2
-#define minusPin  3
+#define resetPin        0
+#define modePin         1
+#define plusPin         2
+#define minusPin        3
 
 //modes
-#define RACE_MODE 1
-#define CONF_MODE 2
+#define RACE_MODE       1
+#define CONF_MODE_TIME  2
+#define CONF_MODE_LAP   3
 
-#define EDIT_MINS  1
-#define EDIT_SECS  2
+#define EDIT_OPT_1      1
+#define EDIT_OPT_2      2
+#define EDIT_OPT_3      3
 
 //leds for startampel
-#define RED_LEFT B00000001
-#define YELLOW_LEFT B00000010
-#define GREEN_LEFT B00000100
+#define RED_LEFT        B00000001
+#define YELLOW_LEFT     B00000010
+#define GREEN_LEFT      B00000100
 
-#define RED_RIGHT B00010000
-#define YELLOW_RIGHT B00100000
-#define GREEN_RIGHT B01000000
+#define RED_RIGHT       B00010000
+#define YELLOW_RIGHT    B00100000
+#define GREEN_RIGHT     B01000000
 
 LiquidCrystal lcd(8,9,10,11,12,13); // might have to change this
 
@@ -31,14 +57,16 @@ volatile long curmillis = 0;
 long lastmillis = 0;
 int lapnr = 0;
 long curlaptime = 0;
-long fastest = 32000; 
+long fastest = 99999; 
 
 boolean race_running = false;
-int mode = CONF_MODE;
+int mode = CONF_MODE_TIME;
 
-int editing = EDIT_MINS;
+int editing = 0;
 
 long timermillis = 0;
+
+long refreshmils = 0;
 
 
 int mins = 0;
@@ -46,6 +74,9 @@ int secs = 0;
 
 int raceMins = 0;
 int raceSecs = 0;
+
+int lap = 0;
+int raceLap = 0;
 
 boolean lastButton[] = {
   LOW, LOW, LOW, LOW};
@@ -55,22 +86,34 @@ int buttonPins[] = {
   4, 5, 7, 6};
 int pressCount = 0;
 
+byte selChar[8] = {
+  B00100,
+  B01010,
+  B10001,
+  B00000,
+  B10001,
+  B01010,
+  B00100,
+};
 
 
-void setup() {
+
+void setup() {  
   lcd.begin(16,2);
+  lcd.createChar(0, selChar);
+
+  refreshmils = millis();
+
   Serial.begin(9600);
   attachInterrupt(0, time, RISING);
   pinMode(buttonPins[resetPin], INPUT);
   pinMode(buttonPins[modePin], INPUT);
   pinMode(buttonPins[plusPin], INPUT);
   pinMode(buttonPins[minusPin], INPUT);
-  Wire.begin(); // join i2c bus (address optional for master)
+  Wire.begin(); 
   expanderWrite(0xFF);
 
-  enterConfMode();
-
-  // initLCD();
+  enterTimeConfMode();
 
 }
 
@@ -97,86 +140,136 @@ void printRaceTimeLeft(){
 
 void raceOver(){
   race_running = false;
-  //  lcd.clear();
-  //  lcd.setCursor(0,0);
-  //  lcd.print("Race Over");
-
   byte writeByte = 0;
   writeByte |= RED_LEFT;
   writeByte |= RED_RIGHT;
   expanderWrite(~writeByte);
 }
 
-void enterConfMode(){
-  lcd.cursor();
+void enterTimeConfMode(){  
   race_running = false;
-  mode = CONF_MODE;
-  lcd.clear();
-  lcd.setCursor(0,0);
-  lcd.print("Time Limit:");
-  lcd.setCursor(0,1);
-  refreshTimeLimitConf();
+  editing = EDIT_OPT_1;
+  mode = CONF_MODE_TIME;
 
+  printTimeConf();
 
 }
 
+void enterLapConfMode(){
+  race_running = false;
+  editing = EDIT_OPT_1;
+  mode = CONF_MODE_LAP;
+
+  printLapConf();
+
+}
+
+void printLapConf(){
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print(" Lap Limit:");
+  lcd.setCursor(0,0);
+  if(editing == EDIT_OPT_1){    
+    lcd.write((uint8_t)0);
+  }
+  else{
+    lcd.print(" ");
+  }
+  lcd.setCursor(1,1);
+  char lapbuf[4] = "";
+  sprintf(lapbuf, "%03d", lap);
+  lcd.print(lapbuf);
+  lcd.setCursor(0,1);
+  if(editing == EDIT_OPT_2){   
+    lcd.write((uint8_t)0); 
+  }
+  else{
+    lcd.print(" ");
+  }    
+
+}
+
+void printTimeConf(){
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print(" Time Limit:");
+  if(editing == EDIT_OPT_1){
+    lcd.setCursor(0,0);
+    lcd.write((uint8_t)0);
+  }
+
+  lcd.setCursor(0,1);
+  refreshTimeLimitConf();
+}
+
+
 void enterRaceMode(){
   mode = RACE_MODE;
-  lcd.noCursor();
+  //lcd.noCursor();
 
   reset();
 }
 
 void loop() {
 
-  if(timermillis >0 && race_running){
-    long now = millis();
-    if(now - timermillis >=1000){
-      if(raceSecs > 0){
-        raceSecs--;
+
+
+  if(mode ==  RACE_MODE){ 
+
+
+
+
+    if(timermillis >0 && race_running){
+      long now = millis();
+      if(now - timermillis >=1000){
+        if(raceSecs > 0){
+          raceSecs--;
+        }
+        else{
+          if(raceMins > 0){
+            raceSecs = 59;
+            raceMins--;
+          }
+        }
+        printRaceTimeLeft();
+
+        if(raceMins==0 && raceSecs == 0){
+          raceOver();
+        }
+
+        timermillis = now;
+
+
+      } 
+
+    }
+
+
+    // See if we have a new laptime
+    if(curmillis - lastmillis > 300){ //debounce probaply better do it in hardware
+      if(lastmillis == 0){
+
+        lastmillis = curmillis;
       }
       else{
-        if(raceMins > 0){
-          raceSecs = 59;
-          raceMins--;
+        curlaptime = curmillis - lastmillis;
+        if(curlaptime > 99999)
+          curlaptime = 99999L;
+        lapnr++;
+        if(lapnr > 99)
+          lapnr = 0;
+        if(curlaptime < fastest){
+          fastest = curlaptime; 
         }
+
+        printOut();
+
+        lastmillis = curmillis;
+
       }
-      printRaceTimeLeft();
-
-      if(raceMins==0 && raceSecs == 0){
-        raceOver();
-      }
-
-      timermillis = now;
-
-
-    } 
-
-  }
-
-
-  // See if we have a new laptime
-  if(curmillis - lastmillis > 300){ //debounce probaply better do it in hardware
-    if(lastmillis == 0){
-      //Serial.write("lastmillis == 0\n");
-      lastmillis = curmillis;
-    }
-    else{
-      curlaptime = curmillis - lastmillis;
-      if(curlaptime > 99999)
-        curlaptime = 99999L;
-      lapnr++;
-      if(lapnr > 99)
-        lapnr = 0;
-      if(curlaptime < fastest){
-        fastest = curlaptime; 
-      }
-
-      printOut();
-
-      lastmillis = curmillis;
 
     }
+
 
   }
 
@@ -187,8 +280,8 @@ void loop() {
   currentButton[resetPin] = debounce(resetPin);
   if (lastButton[resetPin] == LOW && currentButton[resetPin] == HIGH)
   {
-    switch(mode){
-    case RACE_MODE:
+
+    if (mode == RACE_MODE){
 
       if(race_running){
         reset();
@@ -197,45 +290,61 @@ void loop() {
       else{
         start();
       }
-      break;
+    }
 
-    case CONF_MODE:
+    else if ( CONF_MODE_TIME ){
       if(mins>0 || secs > 0){
         enterRaceMode();
       }
-      break;
-
-
     }
+
+
+
 
   }
   lastButton[resetPin] = currentButton[resetPin];  
 
 
-  //modePin
+  //modeButton
   currentButton[modePin] = debounce(modePin);
   if (lastButton[modePin] == LOW && currentButton[modePin] == HIGH)
   {
-    switch(mode){
-    case RACE_MODE:
 
-      enterConfMode();
-      break;
+    if ( mode ==  RACE_MODE ){
 
-    case CONF_MODE:
-      if(editing == EDIT_MINS){
-        editing = EDIT_SECS;
+      enterTimeConfMode();
+    }
+
+    else if (mode == CONF_MODE_TIME){
+      if(editing == EDIT_OPT_2){
+        editing = EDIT_OPT_3;
       }
-      else if(editing == EDIT_SECS){
-        editing = EDIT_MINS;
+      else if(editing == EDIT_OPT_3){
+        editing = EDIT_OPT_1;
+      }
+      else if(editing == EDIT_OPT_1){
+        editing = EDIT_OPT_2;      
       }
 
-      refreshTimeLimitConf();
-      break;
-
+      printTimeConf();
 
 
     }
+
+    else if( mode == CONF_MODE_LAP){
+      if(editing == EDIT_OPT_1){
+        editing = EDIT_OPT_2;  
+      } 
+      else if(editing == EDIT_OPT_2){
+        editing = EDIT_OPT_1;
+      }
+      printLapConf();
+
+    }
+
+
+
+
 
   }
   lastButton[modePin] = currentButton[modePin];  
@@ -246,10 +355,10 @@ void loop() {
   currentButton[plusPin] = debounce(plusPin);
   if (lastButton[plusPin] == LOW && currentButton[plusPin] == HIGH)
   {
-    switch(mode){
-    case CONF_MODE:
-      switch(editing){
-      case EDIT_SECS:
+
+    if ( mode ==  CONF_MODE_TIME){
+
+      if (editing ==  EDIT_OPT_3){
         if(secs < 59){
           secs++;
         }
@@ -258,21 +367,34 @@ void loop() {
           if(mins < 99)
             mins++;
         }
-        break; 
-      case EDIT_MINS:
-        if(mins < 99)
+        printTimeConf();
+      }
+      else if (editing ==  EDIT_OPT_2){
+        if(mins < 99){
           mins++;
-        break;
-
-
+          printTimeConf();
+        }
       }
 
-      refreshTimeLimitConf();
-
-      break;
+      else if(editing ==  EDIT_OPT_1){
+        enterLapConfMode();
+      }
 
     }
 
+    else if ( mode == CONF_MODE_LAP){
+
+      if(editing ==  EDIT_OPT_1){
+        enterTimeConfMode();
+      }
+      else if(editing ==  EDIT_OPT_2){
+        if(lap < 999){
+          lap++;
+          printLapConf();
+        }
+      }
+
+    }
   }
   lastButton[plusPin] = currentButton[plusPin];  
 
@@ -281,10 +403,10 @@ void loop() {
   currentButton[minusPin] = debounce(minusPin);
   if (lastButton[minusPin] == LOW && currentButton[minusPin] == HIGH)
   {
-    switch(mode){
-    case CONF_MODE:
-      switch(editing){
-      case EDIT_SECS:
+
+    if( mode ==  CONF_MODE_TIME){
+
+      if(editing == EDIT_OPT_3){
         if(secs > 0){
           secs--;
         }
@@ -294,19 +416,46 @@ void loop() {
             mins--;
           }
         }
-        break; 
-       case EDIT_MINS:
-       if(mins > 0){            
-            mins--;
-          }
+        printTimeConf();
+      }
+      if (editing == EDIT_OPT_2){
+        if(mins > 0){            
+          mins--;
+          printTimeConf();
+        }
+      }
+      if (editing ==  EDIT_OPT_1){
+        enterLapConfMode();
+      }
+
+
+
+
+
+    }
+
+    else if( mode == CONF_MODE_LAP){
+
+
+      if(editing == EDIT_OPT_2){
+        if(lap > 0){            
+          lap--;
+          printLapConf();
+        }
+      }
+
+
+      else if(editing == EDIT_OPT_1){
+        enterTimeConfMode();
+
 
       }
 
-      refreshTimeLimitConf();
 
-      break;
 
     }
+
+
 
   }
   lastButton[minusPin] = currentButton[minusPin];  
@@ -318,12 +467,16 @@ void refreshTimeLimitConf(){
   char minbuf[6]="";
   sprintf(minbuf, "%02d:%02d", mins, secs);
   lcd.setCursor(0,1);
+  lcd.print("                ");
+  lcd.setCursor(1,1);
   lcd.print(minbuf);
-  if(editing == EDIT_MINS){
+  if(editing == EDIT_OPT_2){
     lcd.setCursor(0,1);
+    lcd.write((uint8_t)0);
   }
-  else if(editing == EDIT_SECS){
-    lcd.setCursor(3,1);
+  else if(editing == EDIT_OPT_3){
+    lcd.setCursor(6,1);
+    lcd.write((uint8_t)0);
   }
 
 
@@ -369,7 +522,7 @@ boolean debounce(int pin)
   boolean current = digitalRead(buttonPins[pin]);
   if (lastButton[pin] != current)
   {
-    delay(5);
+    delay(10                 );
     current = digitalRead(buttonPins[pin]);
   }
   return current;
@@ -442,6 +595,11 @@ void expanderWrite(byte _data ) {
   Wire.write(_data);
   Wire.endTransmission();
 }
+
+
+
+
+
 
 
 
