@@ -328,7 +328,7 @@ void loop() {
       }
     }
 
-    else if ( CONF_MODE_TIME ){
+    else if ( mode == CONF_MODE_TIME ){
       if(mins>0 || secs > 0){
         enterRaceMode();
       }
@@ -585,7 +585,7 @@ void printOut(){
   char fastbuf[9]="";
   sprintf(lapbuf,"%03d", lapnrSlot1);      
   lcd.print(lapbuf);
-  lcd.prinit("          ");
+  lcd.print("          ");
   sprintf(lapbuf,"%03d", lapnrSlot2);    
   lcd.print(lapbuf); 
   lcd.setCursor(0,1);
