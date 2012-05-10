@@ -53,11 +53,16 @@ CarreraMeasure2 - An arduino sketch to measure times of slotcars
 
 LiquidCrystal lcd(8,9,10,11,12,13); // might have to change this
 
-volatile long curmillis = 0;
-long lastmillis = 0;
-int lapnr = 0;
-long curlaptime = 0;
-long fastest = 99999; 
+volatile long slot1mils = 0;
+volatile long slot2mils = 0;
+long lastslot1mils = 0;
+long lastslot2mils = 0;
+int lapnrSlot1 = 0;
+int lapnrSlot2 = 0;
+long curlaptimeSlot1 = 0;
+long curlaptimeSlot2 = 0;
+long fastestSlot1 = 99999;
+long fastestSlot2 = 99999;
 
 boolean race_running = false;
 int mode = CONF_MODE_TIME;
@@ -99,7 +104,7 @@ byte selChar[8] = {
 
 
 void setup() {  
-  lcd.begin(16,2);
+  lcd.begin(16,4);
   lcd.createChar(0, selChar);
 
   refreshmils = millis();
@@ -121,9 +126,15 @@ void setup() {
 void initLCD() {
   lcd.clear();
   lcd.setCursor(0,0);
-  lcd.print("00 00:000s");
+  lcd.print("000          000");
   lcd.setCursor(0,1);
-  lcd.print("   00:000s"); 
+  lcd.print("00:000s");
+  lcd.print("  ");
+  lcd.print("00:000s");
+  lcd.setCursor(0,2);
+  lcd.print("00:000s");
+  lcd.print("  ");
+  lcd.print("00:000s"); 
   printRaceTimeLeft();
 
 }
@@ -132,7 +143,7 @@ void printRaceTimeLeft(){
 
   char minbuf[6]="";
   sprintf(minbuf, "%02d:%02d", raceMins, raceSecs);
-  lcd.setCursor(11,1);
+  lcd.setCursor(6,0);
   lcd.print(minbuf);
 
 
@@ -246,25 +257,25 @@ void loop() {
 
 
     // See if we have a new laptime
-    if(curmillis - lastmillis > 300){ //debounce probaply better do it in hardware
-      if(lastmillis == 0){
+    if(slot1mils - lastslot1mils > 300){ //debounce probaply better do it in hardware
+      if(slot1mils == 0){
 
-        lastmillis = curmillis;
+        lastslot1mils = slot1mils;
       }
       else{
-        curlaptime = curmillis - lastmillis;
-        if(curlaptime > 99999)
-          curlaptime = 99999L;
-        lapnr++;
-        if(lapnr > 99)
-          lapnr = 0;
-        if(curlaptime < fastest){
-          fastest = curlaptime; 
+        curlaptimeSlot1 = slot1mils - lastslot1mils;
+        if(curlaptimeSlot1 > 99999)
+          curlaptimeSlot1 = 99999L;
+        lapnrSlot1++;
+        if(lapnrSlot1 > 99)
+          lapnrSlot1 = 0;
+        if(curlaptimeSlot1 < fastestSlot1){
+          fastestSlot1 = curlaptimeSlot1; 
         }
 
         printOut();
 
-        lastmillis = curmillis;
+        lastslot1mils = slot1mils;
 
       }
 
@@ -484,11 +495,11 @@ void refreshTimeLimitConf(){
 
 
 void reset(){
-  curmillis = 0L;
-  lastmillis = 0L;
-  lapnr = 0;
-  curlaptime = 0L;
-  fastest = 99999L;  
+  slot1mils = 0L;
+  lastslot1mils = 0L;
+  lapnrSlot1 = 0;
+  curlaptimeSlot1 = 0L;
+  fastestSlot1 = 99999L;  
 
   raceMins = mins;
   raceSecs = secs;
@@ -514,7 +525,7 @@ void start(){
 
 void time(){
   if(race_running)
-    curmillis = millis(); 
+    slot1mils = millis(); 
 }
 
 boolean debounce(int pin)
@@ -530,11 +541,11 @@ boolean debounce(int pin)
 
 
 void printOut(){
-  Serial.print(lapnr);
+  Serial.print(lapnrSlot1);
   Serial.print(";");
-  Serial.print(curlaptime);
+  Serial.print(curlaptimeSlot1);
   Serial.print(";");
-  Serial.println(fastest);
+  Serial.println(fastestSlot1);
 
   lcd.clear();
   lcd.setCursor(0,0);
@@ -542,18 +553,18 @@ void printOut(){
   char lapbuf[3]="";
   char timebuf[9]="";
   char fastbuf[9]="";
-  sprintf(lapbuf,"%02d", lapnr);      
+  sprintf(lapbuf,"%03d", lapnrSlot1);      
   lcd.print(lapbuf);
-  lcd.print(" ");
-  int lapsec = curlaptime / 1000;
-  int lapmillis = curlaptime - lapsec * 1000;
+  lcd.setCursor(0,1);
+  int lapsec = curlaptimeSlot1 / 1000;
+  int lapmillis = curlaptimeSlot1 - lapsec * 1000;
   sprintf(timebuf, "%02d:%03ds", lapsec, lapmillis);
   Serial.println(timebuf);
   lcd.print(timebuf);
-  lcd.setCursor(0,1);
-  lcd.print("   ");
-  int fastsec = fastest / 1000;
-  int fastmillis = fastest - fastsec * 1000;
+  lcd.setCursor(0,2);
+  
+  int fastsec = fastestSlot1 / 1000;
+  int fastmillis = fastestSlot1 - fastsec * 1000;
   sprintf(fastbuf, "%02d:%03ds", fastsec, fastmillis);
   Serial.println(fastbuf);
   lcd.print(fastbuf);
