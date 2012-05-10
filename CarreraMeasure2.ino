@@ -111,6 +111,7 @@ void setup() {
 
   Serial.begin(9600);
   attachInterrupt(0, time, RISING);
+  attachInterrupt(1, time1, RISING);
   pinMode(buttonPins[resetPin], INPUT);
   pinMode(buttonPins[modePin], INPUT);
   pinMode(buttonPins[plusPin], INPUT);
@@ -131,7 +132,7 @@ void initLCD() {
   lcd.print("00:000s");
   lcd.print("  ");
   lcd.print("00:000s");
-  lcd.setCursor(0,2);
+  lcd.setCursor(-4,2); // for some reason theres a 4 col offset in line 2 and 3. might just be my display no idea
   lcd.print("00:000s");
   lcd.print("  ");
   lcd.print("00:000s"); 
@@ -256,9 +257,9 @@ void loop() {
     }
 
 
-    // See if we have a new laptime
+    // See if we have a new laptime for slot 1
     if(slot1mils - lastslot1mils > 300){ //debounce probaply better do it in hardware
-      if(slot1mils == 0){
+      if(lastslot1mils == 0){
 
         lastslot1mils = slot1mils;
       }
@@ -276,6 +277,30 @@ void loop() {
         printOut();
 
         lastslot1mils = slot1mils;
+
+      }
+
+    }
+    
+    if(slot2mils - lastslot2mils > 300){ //debounce probaply better do it in hardware
+      if(lastslot2mils == 0){
+
+        lastslot2mils = slot2mils;
+      }
+      else{
+        curlaptimeSlot2 = slot2mils - lastslot1mils;
+        if(curlaptimeSlot2 > 99999)
+          curlaptimeSlot2 = 99999L;
+        lapnrSlot2++;
+        if(lapnrSlot2 > 99)
+          lapnrSlot2 = 0;
+        if(curlaptimeSlot2 < fastestSlot2){
+          fastestSlot2 = curlaptimeSlot2; 
+        }
+
+        printOut();
+
+        lastslot2mils = slot2mils;
 
       }
 
@@ -528,6 +553,11 @@ void time(){
     slot1mils = millis(); 
 }
 
+void time1(){
+  if(race_running)
+    slot2mils = millis(); 
+}
+
 boolean debounce(int pin)
 {
   boolean current = digitalRead(buttonPins[pin]);
@@ -541,11 +571,11 @@ boolean debounce(int pin)
 
 
 void printOut(){
-  Serial.print(lapnrSlot1);
-  Serial.print(";");
-  Serial.print(curlaptimeSlot1);
-  Serial.print(";");
-  Serial.println(fastestSlot1);
+//  Serial.print(lapnrSlot1);
+//  Serial.print(";");
+//  Serial.print(curlaptimeSlot1);
+//  Serial.print(";");
+//  Serial.println(fastestSlot1);
 
   lcd.clear();
   lcd.setCursor(0,0);
@@ -555,19 +585,37 @@ void printOut(){
   char fastbuf[9]="";
   sprintf(lapbuf,"%03d", lapnrSlot1);      
   lcd.print(lapbuf);
+  lcd.prinit("          ");
+  sprintf(lapbuf,"%03d", lapnrSlot2);    
+  lcd.print(lapbuf); 
   lcd.setCursor(0,1);
   int lapsec = curlaptimeSlot1 / 1000;
   int lapmillis = curlaptimeSlot1 - lapsec * 1000;
   sprintf(timebuf, "%02d:%03ds", lapsec, lapmillis);
-  Serial.println(timebuf);
+  //Serial.println(timebuf);
   lcd.print(timebuf);
-  lcd.setCursor(0,2);
+  lcd.print("  ");
+  lapsec = curlaptimeSlot2 / 1000;
+  lapmillis = curlaptimeSlot2 - lapsec * 1000;
+  sprintf(timebuf, "%02d:%03ds", lapsec, lapmillis);
+  //Serial.println(timebuf);
+  lcd.print(timebuf);
+  
+  
+  lcd.setCursor(-4,2); // strange offset again
   
   int fastsec = fastestSlot1 / 1000;
   int fastmillis = fastestSlot1 - fastsec * 1000;
   sprintf(fastbuf, "%02d:%03ds", fastsec, fastmillis);
-  Serial.println(fastbuf);
+  //Serial.println(fastbuf);
   lcd.print(fastbuf);
+  lcd.print("  ");
+  fastsec = fastestSlot2 / 1000;
+  fastmillis = fastestSlot2 - fastsec * 1000;
+  sprintf(fastbuf, "%02d:%03ds", fastsec, fastmillis);
+  lcd.print(fastbuf);
+  
+  printRaceTimeLeft();
 }
 
 
