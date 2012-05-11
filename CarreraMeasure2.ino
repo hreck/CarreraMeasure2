@@ -35,8 +35,9 @@ CarreraMeasure2 - An arduino sketch to measure times of slotcars
 
 //modes
 #define RACE_MODE       1
-#define CONF_MODE_TIME  2
-#define CONF_MODE_LAP   3
+#define RACE_MODE_LAP   2
+#define CONF_MODE_TIME  3
+#define CONF_MODE_LAP   4
 
 #define EDIT_OPT_1      1
 #define EDIT_OPT_2      2
@@ -73,6 +74,12 @@ long timermillis = 0;
 
 long refreshmils = 0;
 
+long slot1StartMils = 0;
+long slot2StartMils = 0;
+
+long slot1RaceTime = 0;
+long slot2RaceTime = 0;
+
 
 int mins = 0;
 int secs = 0;
@@ -100,6 +107,8 @@ byte selChar[8] = {
   B01010,
   B00100,
 };
+
+byte lightsBuffer = 0;
 
 
 
@@ -136,8 +145,19 @@ void initLCD() {
   lcd.print("00:000s");
   lcd.print("  ");
   lcd.print("00:000s"); 
+  if(mode == RACE_MODE){
   printRaceTimeLeft();
+  }else if(mode == RACE_MODE_LAP){
+   printLapLimit(); 
+  }
 
+}
+
+void printLapLimit(){
+  char lapbuf[4]="";
+  sprintf(lapbuf, "%03d", lap);
+  lcd.setCursor(6,0);
+  lcd.print(lapbuf);
 }
 
 void printRaceTimeLeft(){
@@ -222,6 +242,13 @@ void enterRaceMode(){
   reset();
 }
 
+void enterRaceLapMode(){
+  mode = RACE_MODE_LAP;
+  //lcd.noCursor();
+
+  reset();
+}
+
 void loop() {
 
 
@@ -255,59 +282,85 @@ void loop() {
       } 
 
     }
+  }
 
+  if ( mode == RACE_MODE || mode == RACE_MODE_LAP){
 
     // See if we have a new laptime for slot 1
     if(slot1mils - lastslot1mils > 300){ //debounce probaply better do it in hardware
       if(lastslot1mils == 0){
 
         lastslot1mils = slot1mils;
+        slot1StartMils = slot1mils;
       }
       else{
-        curlaptimeSlot1 = slot1mils - lastslot1mils;
-        if(curlaptimeSlot1 > 99999)
-          curlaptimeSlot1 = 99999L;
-        lapnrSlot1++;
-        if(lapnrSlot1 > 99)
-          lapnrSlot1 = 0;
-        if(curlaptimeSlot1 < fastestSlot1){
-          fastestSlot1 = curlaptimeSlot1; 
+        if(mode == RACE_MODE || (mode == RACE_MODE_LAP && lapnrSlot1 < lap)){
+          curlaptimeSlot1 = slot1mils - lastslot1mils;
+          if(curlaptimeSlot1 > 99999)
+            curlaptimeSlot1 = 99999L;
+          lapnrSlot1++;
+          if(lapnrSlot1 > 999)
+            lapnrSlot1 = 0;
+          if(curlaptimeSlot1 < fastestSlot1){
+            fastestSlot1 = curlaptimeSlot1; 
+
+
+          }
+
+          printOut();
+
+          lastslot1mils = slot1mils;
+
+          if(mode == RACE_MODE_LAP && lapnrSlot1 >= lap){
+            slot1RaceTime = slot1mils - slot1StartMils;
+            slot1Red();
+            
+          }
         }
 
-        printOut();
-
-        lastslot1mils = slot1mils;
 
       }
 
     }
-    
+
     if(slot2mils - lastslot2mils > 300){ //debounce probaply better do it in hardware
       if(lastslot2mils == 0){
 
         lastslot2mils = slot2mils;
+        slot2StartMils = slot2mils;
       }
       else{
-        curlaptimeSlot2 = slot2mils - lastslot1mils;
-        if(curlaptimeSlot2 > 99999)
-          curlaptimeSlot2 = 99999L;
-        lapnrSlot2++;
-        if(lapnrSlot2 > 99)
-          lapnrSlot2 = 0;
-        if(curlaptimeSlot2 < fastestSlot2){
-          fastestSlot2 = curlaptimeSlot2; 
+        if(mode == RACE_MODE || (mode == RACE_MODE_LAP && lapnrSlot2 < lap)){
+          curlaptimeSlot2 = slot2mils - lastslot1mils;
+          if(curlaptimeSlot2 > 99999)
+            curlaptimeSlot2 = 99999L;
+          lapnrSlot2++;
+          if(lapnrSlot2 > 999)
+            lapnrSlot2 = 0;
+          if(curlaptimeSlot2 < fastestSlot2){
+            fastestSlot2 = curlaptimeSlot2; 
+          }
+
+          printOut();
+
+          lastslot2mils = slot2mils;
+
+          if(mode == RACE_MODE_LAP && lapnrSlot2 >= lap){
+            slot2RaceTime = slot2mils - slot2StartMils;
+            slot2Red();
+            
+          }
+
         }
-
-        printOut();
-
-        lastslot2mils = slot2mils;
 
       }
 
     }
 
-
   }
+
+
+
 
 
 
@@ -317,7 +370,7 @@ void loop() {
   if (lastButton[resetPin] == LOW && currentButton[resetPin] == HIGH)
   {
 
-    if (mode == RACE_MODE){
+    if (mode == RACE_MODE || mode == RACE_MODE_LAP){
 
       if(race_running){
         reset();
@@ -332,6 +385,12 @@ void loop() {
       if(mins>0 || secs > 0){
         enterRaceMode();
       }
+    }
+    else if ( mode == CONF_MODE_LAP ){
+      if(lap > 0){
+        enterRaceLapMode();
+      }
+      
     }
 
 
@@ -349,6 +408,9 @@ void loop() {
     if ( mode ==  RACE_MODE ){
 
       enterTimeConfMode();
+    }
+    else if ( mode == RACE_MODE_LAP){
+      enterLapConfMode();
     }
 
     else if (mode == CONF_MODE_TIME){
@@ -525,6 +587,12 @@ void reset(){
   lapnrSlot1 = 0;
   curlaptimeSlot1 = 0L;
   fastestSlot1 = 99999L;  
+  
+  slot1StartMils = 0L;
+  slot1RaceTime = 0L;
+
+  slot2StartMils = 0L;
+  slot2RaceTime = 0L;
 
   raceMins = mins;
   raceSecs = secs;
@@ -571,11 +639,11 @@ boolean debounce(int pin)
 
 
 void printOut(){
-//  Serial.print(lapnrSlot1);
-//  Serial.print(";");
-//  Serial.print(curlaptimeSlot1);
-//  Serial.print(";");
-//  Serial.println(fastestSlot1);
+  //  Serial.print(lapnrSlot1);
+  //  Serial.print(";");
+  //  Serial.print(curlaptimeSlot1);
+  //  Serial.print(";");
+  //  Serial.println(fastestSlot1);
 
   lcd.clear();
   lcd.setCursor(0,0);
@@ -583,11 +651,16 @@ void printOut(){
   char lapbuf[3]="";
   char timebuf[9]="";
   char fastbuf[9]="";
+
+  char lapbuf2[3]="";
+  char timebuf2[9]="";
+  char fastbuf2[9]="";
+
   sprintf(lapbuf,"%03d", lapnrSlot1);      
   lcd.print(lapbuf);
   lcd.print("          ");
-  sprintf(lapbuf,"%03d", lapnrSlot2);    
-  lcd.print(lapbuf); 
+  sprintf(lapbuf2,"%03d", lapnrSlot2);    
+  lcd.print(lapbuf2); 
   lcd.setCursor(0,1);
   int lapsec = curlaptimeSlot1 / 1000;
   int lapmillis = curlaptimeSlot1 - lapsec * 1000;
@@ -597,13 +670,13 @@ void printOut(){
   lcd.print("  ");
   lapsec = curlaptimeSlot2 / 1000;
   lapmillis = curlaptimeSlot2 - lapsec * 1000;
-  sprintf(timebuf, "%02d:%03ds", lapsec, lapmillis);
+  sprintf(timebuf2, "%02d:%03ds", lapsec, lapmillis);
   //Serial.println(timebuf);
-  lcd.print(timebuf);
-  
-  
+  lcd.print(timebuf2);
+
+
   lcd.setCursor(-4,2); // strange offset again
-  
+
   int fastsec = fastestSlot1 / 1000;
   int fastmillis = fastestSlot1 - fastsec * 1000;
   sprintf(fastbuf, "%02d:%03ds", fastsec, fastmillis);
@@ -612,12 +685,62 @@ void printOut(){
   lcd.print("  ");
   fastsec = fastestSlot2 / 1000;
   fastmillis = fastestSlot2 - fastsec * 1000;
-  sprintf(fastbuf, "%02d:%03ds", fastsec, fastmillis);
-  lcd.print(fastbuf);
+  sprintf(fastbuf2, "%02d:%03ds", fastsec, fastmillis);
+  lcd.print(fastbuf2);
   
+  if(slot1RaceTime > 0){
+    char racetimebuf1[7] = "";
+    
+    int racesecs1 = slot1RaceTime / 1000;
+    int racemins1 = racesecs1 / 60;
+    racesecs1 = racesecs1 - racemins1 * 60;
+    
+    sprintf(racetimebuf1, "%02d:%02dm", racemins1, racesecs1);
+    lcd.setCursor(-4,3);
+    lcd.print(racetimebuf1); 
+    
+  }  
+  
+  if(slot2RaceTime > 0){
+    
+    char racetimebuf2[7] = "";
+    
+    int racesecs2 = slot2RaceTime / 1000;
+    int racemins2 = racesecs2 / 60;
+    racesecs2 = racesecs2 - racemins2 * 60;
+    
+    sprintf(racetimebuf2, "%02d:%02dm", racemins2, racesecs2);
+    lcd.setCursor(6,3);
+    lcd.print(racetimebuf2); 
+    
+    
+  }
+  
+  
+
+  if(mode == RACE_MODE){
   printRaceTimeLeft();
+  }else if(mode == RACE_MODE_LAP){
+   printLapLimit(); 
+  }
 }
 
+
+void slot1Red(){
+  byte writeByte = ~lightsBuffer;
+  writeByte &= ~GREEN_LEFT;
+  writeByte |= RED_LEFT;
+  expanderWrite(~writeByte);
+  
+}
+
+
+void slot2Red(){
+  byte writeByte = ~lightsBuffer;
+  writeByte &= ~GREEN_RIGHT;
+  writeByte |= RED_RIGHT;
+  expanderWrite(~writeByte);
+}
 
 void startAmpel(){
   expanderWrite(0xFF);
@@ -653,7 +776,10 @@ void expanderWrite(byte _data ) {
   Wire.beginTransmission(expander);
   Wire.write(_data);
   Wire.endTransmission();
+  lightsBuffer = _data;
 }
+
+
 
 
 
