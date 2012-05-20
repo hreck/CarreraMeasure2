@@ -52,7 +52,7 @@ CarreraMeasure2 - An arduino sketch to measure times of slotcars
 #define YELLOW_RIGHT    B00100000
 #define GREEN_RIGHT     B01000000
 
-LiquidCrystal lcd(8,9,10,11,12,13); // might have to change this
+LiquidCrystal lcd(4,5,6,7,8,9); // might have to change this
 
 volatile long slot1mils = 0;
 volatile long slot2mils = 0;
@@ -94,8 +94,8 @@ boolean lastButton[] = {
   LOW, LOW, LOW, LOW};
 boolean currentButton[] = {
   LOW, LOW, LOW, LOW};
-int buttonPins[] = {
-  4, 5, 7, 6};
+int buttonPins[] = {          // pinout for the buttons
+  10, 11, 12, 13};            // change according to your wiring       
 int pressCount = 0;
 
 byte selChar[8] = {
@@ -307,7 +307,7 @@ void loop() {
 
           }
 
-          printOut();
+          
 
           lastslot1mils = slot1mils;
 
@@ -316,6 +316,7 @@ void loop() {
             slot1Red();
             
           }
+          printOut();
         }
 
 
@@ -341,7 +342,7 @@ void loop() {
             fastestSlot2 = curlaptimeSlot2; 
           }
 
-          printOut();
+          
 
           lastslot2mils = slot2mils;
 
@@ -350,6 +351,7 @@ void loop() {
             slot2Red();
             
           }
+          printOut();
 
         }
 
